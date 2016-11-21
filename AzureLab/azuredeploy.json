@@ -1,0 +1,207 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+  "parameters": {
+    "azurelabstorageType": {
+      "type": "string",
+      "defaultValue": "Standard_LRS",
+      "allowedValues": [
+        "Standard_LRS",
+        "Standard_ZRS",
+        "Standard_GRS",
+        "Standard_RAGRS",
+        "Premium_LRS"
+      ]
+    },
+    "AdminUserName": {
+      "type": "string",
+      "minLength": 4
+
+    },
+    "AdminPassword": {
+      "type": "securestring",
+      "minLength": 8
+ 
+    },
+    "domainName": {
+       "type": "string",
+       "defaultValue": "lab.prv"
+        }
+    },
+  "variables": {
+    "azurelabstorageName": "[concat('labstorage', uniqueString(resourceGroup().id))]",
+    "AzureLabNetPrefix": "10.0.0.0/16",
+    "AzureLabNetSubnet1Name": "Subnet-1",
+    "AzureLabNetSubnet1Prefix": "10.0.0.0/24",
+    "AzureLabNetSubnet2Name": "Subnet-2",
+    "AzureLabNetSubnet2Prefix": "10.0.1.0/24",
+    "DC01ImagePublisher": "MicrosoftWindowsServer",
+    "DC01ImageOffer": "WindowsServer",
+    "DC01OSDiskName": "DC01OSDisk",
+    "DC01VmSize": "Standard_D1",
+    "DC01VnetID": "[resourceId('Microsoft.Network/virtualNetworks', 'AzureLabNet')]",
+    "DC01SubnetRef": "[concat(variables('DC01VnetID'), '/subnets/', variables('AzureLabNetSubnet1Name'))]",
+    "DC01StorageAccountContainerName": "vhds",
+    "DC01NicName": "[concat(variables('DC01Name'), '-NIC')]",
+    "DC01PublicIPName": "DC01PublicIP",
+    "DC01WindowsOSVersion": "2016-Datacenter",
+    "Adlabstoragetype": "Standard_LRS",
+    "DC01Name": "DC01",
+    "DC01DATADiskName": "DC01DATADisk",
+    "DC01PrivateIPAddress": "10.0.0.10"
+  },
+    "resources": [
+        {
+            "name": "[variables('azurelabstorageName')]",
+            "type": "Microsoft.Storage/storageAccounts",
+            "location": "[resourceGroup().location]",
+            "apiVersion": "2015-06-15",
+            "dependsOn": [ ],
+            "tags": {
+                "displayName": "azurelabstorage"
+            },
+            "properties": {
+                "accountType": "[parameters('azurelabstorageType')]"
+            }
+        },
+        {
+            "name": "AzureLabNet",
+            "type": "Microsoft.Network/virtualNetworks",
+            "location": "[resourceGroup().location]",
+            "apiVersion": "2015-06-15",
+            "dependsOn": [ ],
+            "tags": {
+                "displayName": "AzureLabNet"
+            },
+          "properties": {
+            "addressSpace": {
+              "addressPrefixes": [
+                "[variables('AzureLabNetPrefix')]"
+              ]
+            },
+            "subnets": [
+              {
+                "name": "[variables('AzureLabNetSubnet1Name')]",
+                "properties": {
+                  "addressPrefix": "[variables('AzureLabNetSubnet1Prefix')]"
+                }
+              },
+              {
+                "name": "[variables('AzureLabNetSubnet2Name')]",
+                "properties": {
+                  "addressPrefix": "[variables('AzureLabNetSubnet2Prefix')]"
+                }
+              }
+            ],
+
+            "dhcpOptions": {
+              "dnsServers": [ "[variables('DC01PrivateIPAddress')]", "8.8.8.8" ]
+            }
+          }
+          
+        },
+        {
+            "name": "[variables('DC01NicName')]",
+            "type": "Microsoft.Network/networkInterfaces",
+            "location": "[resourceGroup().location]",
+            "apiVersion": "2015-06-15",
+            "dependsOn": [
+                "[concat('Microsoft.Network/virtualNetworks/', 'AzureLabNet')]",
+                "[concat('Microsoft.Network/publicIPAddresses/', variables('DC01PublicIPName'))]"
+            ],
+            "tags": {
+                "displayName": "DC01Nic"
+            },
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "ipconfig1",
+                        "properties": {
+                          "privateIPAllocationMethod": "Static",
+                          "privateIPAddress": "[variables('DC01PrivateIPAddress')]",
+                            "subnet": {
+                                "id": "[variables('DC01SubnetRef')]"
+                            },
+                            "publicIPAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('DC01PublicIPName'))]"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "name": "[variables('DC01Name')]",
+            "type": "Microsoft.Compute/virtualMachines",
+            "location": "[resourceGroup().location]",
+            "apiVersion": "2015-06-15",
+            "dependsOn": [
+                "[concat('Microsoft.Storage/storageAccounts/', variables('azurelabstorageName'))]",
+                "[concat('Microsoft.Network/networkInterfaces/', variables('DC01NicName'))]"
+            ],
+            "tags": {
+                "displayName": "DC01"
+            },
+          "properties": {
+            "hardwareProfile": {
+              "vmSize": "[variables('DC01VmSize')]"
+            },
+            "osProfile": {
+              "computerName": "[variables('DC01Name')]",
+              "adminUsername": "[parameters('AdminUsername')]",
+              "adminPassword": "[parameters('AdminPassword')]"
+            },
+            "storageProfile": {
+              "imageReference": {
+                "publisher": "[variables('DC01ImagePublisher')]",
+                "offer": "[variables('DC01ImageOffer')]",
+                "sku": "[variables('DC01WindowsOSVersion')]",
+                "version": "latest"
+              },
+              "osDisk": {
+                "name": "DC01OSDisk",
+                "vhd": {
+                  "uri": "[concat('http://', variables('azurelabstorageName'), '.blob.core.windows.net/', variables('DC01StorageAccountContainerName'), '/', variables('DC01OSDiskName'), '.vhd')]"
+                },
+                "caching": "ReadWrite",
+                "createOption": "FromImage"
+              },
+              "dataDisks": [
+                {
+                  "name": "[variables('DC01DATADiskName')]",
+                  "vhd": {
+                    "uri": "[concat('http://', variables('azurelabstorageName'), '.blob.core.windows.net/', variables('DC01StorageAccountContainerName'), '/', variables('DC01DATADiskName'), '.vhd')]"
+                  },
+                  "caching": "None",
+                  "createOption": "Empty",
+                  "diskSizeGB": "10",
+                  "lun": 0
+                }
+              ]
+            },
+            "networkProfile": {
+              "networkInterfaces": [
+                {
+                  "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('DC01NicName'))]"
+                }
+              ]
+            }
+          }
+        },
+        {
+            "name": "[variables('DC01PublicIPName')]",
+            "type": "Microsoft.Network/publicIPAddresses",
+            "location": "[resourceGroup().location]",
+            "apiVersion": "2015-06-15",
+            "dependsOn": [ ],
+            "tags": {
+                "displayName": "DC01PublicIP"
+            },
+            "properties": {
+                "publicIPAllocationMethod": "Dynamic"
+              }
+        }
+    ],
+    "outputs": {
+    }
+}
