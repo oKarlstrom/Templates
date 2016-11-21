@@ -1,0 +1,7 @@
+{
+
+"itemDisplayName": "AzureLab",
+
+"description": "Creates a single Server 2016 with 2 VHD's and a public IP-address."
+
+}
